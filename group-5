@@ -1,1 +1,101 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, roc_auc_score
+import xgboost as xgb
+from imblearn.over_sampling import SMOTE
+# Load and prepare transaction data
+def load_transaction_data(filepath):
+    df = pd.read_csv(filepath)
+ 
+    # Convert timestamp to datetime
+    df['transaction_timestamp'] = pd.to_datetime(df['transaction_timestamp'])
+ 
+    # Extract temporal features
+    df['hour_of_day'] = df['transaction_timestamp'].dt.hour
+    df['day_of_week'] = df['transaction_timestamp'].dt.dayofweek
+    df['month'] = df['transaction_timestamp'].dt.month
+ # Calculate velocity features (transactions in last 24h, 7d)
+    # (simplified example)
+ 
+    return df
+
+# Handle class imbalance
+def preprocess_data(df, target='is_fraud'):
+    # Split features and target
+    X = df.drop([target, 'transaction_id'], axis=1)  # Remove ID and target
+    y = df[target]
+ 
+# Split into train and test sets (time-based split would be better in practice)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+ 
+    # Scale features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+ 
+    # Apply SMOTE to handle class imbalance
+    smote = SMOTE(random_state=42)
+    X_train_resampled, y_train_resampled =
+smote.fit_resample(X_train_scaled, y_train)
+ 
+    return X_train_resampled, X_test_scaled, y_train_resampled, y_test, scaler
+
+# Train and evaluate model
+def train_fraud_detection_model(X_train, X_test, y_train, y_test):
+    # Train XGBoost model
+    model = xgb.XGBClassifier(
+        scale_pos_weight=10,  # Adjust for class imbalance
+        learning_rate=0.1,
+n_estimators=100,
+        max_depth=5,
+        use_label_encoder=False,
+        eval_metric='auc'
+    )
+ 
+    model.fit(X_train, y_train)
+ 
+    # Make predictions
+    y_pred_proba = model.predict_proba(X_test)[:, 1]
+ 
+    # Calculate AUC-ROC
+ auc_roc = roc_auc_score(y_test, y_pred_proba)
+    print(f"AUC-ROC Score: {auc_roc:.4f}")
+ 
+    # Convert probabilities to binary predictions using threshold
+    threshold = 0.3  # Threshold can be tuned based on business requirements
+    y_pred = (y_pred_proba >= threshold).astype(int)
+ 
+    # Classification report
+ print(classification_report(y_test, y_pred))
+ 
+    return model, y_pred_proba
+
+# Real-time inference function
+def predict_transaction_fraud(model, scaler, transaction_data):
+    # Preprocess single transaction
+    transaction_processed = preprocess_transaction(transaction_data, scaler)
+ 
+    # Make prediction
+ fraud_probability = model.predict_proba([transaction_processed])[0, 1]
+ 
+    # Decision logic
+    if fraud_probability > 0.8:
+        action = "BLOCK"
+    elif fraud_probability > 0.4:
+        action = "REVIEW"
+    else:
+        action = "APPROVE"
+ 
+    return {
+        "transaction_id": 
+transaction_data["transaction_id"],
+        "fraud_probability": float(fraud_probability),
+        "action": action,
+        "model_version": "v1.0.3",
+        "prediction_timestamp": pd.Timestamp.now().isoformat()
+    }
+
 
